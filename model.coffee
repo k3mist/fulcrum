@@ -1,235 +1,207 @@
 'use strict'
 
 define (require) ->
-  _ = require('underscore')
-  ko = require('knockout')
-  ko.mapping = require('koMapping')
-
-  Fulcrum = {}
-  Fulcrum.Collection = require('./collection')
-  Helpers = require("./helpers/_helpers_")
+  _         = require 'underscore'
+  Backbone  = require 'backbone'
+  require 'backbone.relational'
+  Phos      = {}
+  Helpers   = require "./helpers/_helpers_"
 
   ###
-  The Model class handles Knockout driven model's for data storage and business logic.
+  Abstraction of the Backbone Model
   ###
-  class Fulcrum.Model
-
-    ###
-    Protected Index's
-
-    @private
-    @property {Array}
-    ###
-    _reserved = [
-      '__ko_mapping__'
-      'constructor'
-      'mapping'
-      'uri'
-      'i18nKey'
-      'fileData'
-      'logger'
-      'put'
-      'patch'
-      'post'
-      'get'
-      'show'
-      'create'
-      'update'
-      'delete'
-      'destroy'
-      'clear'
-      'revert'
-    ]
-
-
-    ###
-    Set ignored model keys from the model's map.ignore object and the _reserved keys list
-
-    @private
-    @method setIgnore
-    @param model {Fulcrum.Model} The current instance
-    @param mapping {Object} The mapping of the current instance
-    ###
-    setIgnore = (model, mapping) ->
-      _.union mapping.ignore, _reserved, _.map(model, (e, i) ->
-        i  if (ko.isObservable(model[i])) and mapping.include.indexOf(i) is -1
-      )
-
-
-    ###
-    Sanitize the json by removing any reserved keys from the object.
-
-    @private
-    @method sanitize
-    @param json {Object}
-    @param ignore {Array}
-    @return {Object}
-    ###
-    sanitize = (json, ignore) ->
-      (delete json[key]  if key in ignore)  for key of json
-      json
-
-
-    ###
-    Create a new json object from the model's mapping include sanitized json object
-
-    @private
-    @method fill
-    @param mapping {Object}
-    @param json {Object}
-    ###
-    fill = (mapping, json) ->
-      (json[key] = ''  if typeof json[key] is 'undefined')  for key in mapping.include
-      json
-
-
-    ###
-    Mapping
-    http://knockoutjs.com/documentation/plugins-mapping.html
-
-    @property {Object}
-    ###
-    mapping:
-      include: []
-      ignore: _reserved
-
-
-    ###
-    The key for the I18n translations. Should map to the root of the translation
-    label requested. For example, if the label needed is 'person.firstname_label'
-    set this to 'person'
-
-    @property {String}
-    ###
-    I18nKey: null
-
+  class Phos.Model extends Backbone.RelationalModel
 
     ###
     Console logging
 
-    @property {Fulcrum.Helpers.Logger}
+    @private
+    @property {Phos.Helpers.Logger}
     ###
-    logger: new Helpers.Logger()
+    logger = new Helpers.Logger()
+
+
+    ###
+    Model defaults
+
+    @property {Object}
+    ###
+    defaults: {}
+
+
+    ###
+    The relations of the Model
+
+        eg.
+        relations: [
+          {
+            type: 'HasMany'
+            key: 'phones'
+            relatedModel: Phone
+            collectionType: Phones
+          }
+          {
+            type: 'HasOne'
+            key: 'address'
+            relatedModel: Address
+          }
+        ]
+    @property {Array}
+    ###
+    relations: []
+
+
+    ###
+    Model Url
+
+    Specify a urlRoot if you're using a model OUTSIDE of a collection to enable
+    the default url function to generate URLs based on the model id.
+    "[urlRoot]/id"
+
+    @property {String/Function}
+    ###
+    urlRoot: null
+
+
+    ###
+    Errors holder.
+
+    @property {Object}
+    ###
+    errors: {}
 
 
     ###
     Constructor
 
-    @param json {Object} JSON to be inherited by the model and instantiated as observables.
-    @return {Object} The mapped Knockout observables
+    @param json {Object}
+    @param empty {Boolean}
     ###
-    constructor: (json) ->
-      # Allow models to be created with no data.
-      json = {}  if typeof json isnt 'object' or not json
+    constructor: (json, empty) ->
+      # Create an empty Model if the empty option is provided
+      json = ((data) =>
+        data = {}  if 'object' isnt typeof data or not data
 
-      # Set ignore keys.
-      @mapping.ignore = setIgnore @, @mapping
+        for key in _.keys(@defaults)
+          data[key] = ''  if 'undefined' isnt typeof data[key]
 
-      # Map the JSON to Knockout observables
-      mapped = ko.mapping.fromJS fill(@mapping, sanitize(json, @mapping.ignore)), @mapping, @
+        for relation in @relations
+          unless data[relation.key]?
+            if 'HasMany' is relation.type
+              data[relation.key] = []
+            else
+              data[relation.key] = {}
 
-      # Convert arrays to a Collection if it has a Model
-      for e in @mapping.include
-        if mapped[e]? and ko.isObservable(mapped[e]) and @mapping[e]?.model?
-          # Set an empty array if no data was provided for the Collection
-          json[e] = []  unless _.isArray(mapped[e]())
-          # Create the Collection
-          @[e] = new Fulcrum.Collection json[e], @mapping[e].model()
+        data
+      )(json) if empty is true
 
-      # Allow extended classes access to the mapped knockout object.
-      return mapped
-
-
-    ###
-    ----------------------------------------------------------------------------
-    UTILITY
-    ----------------------------------------------------------------------------
-    ###
+      # Initialize the Model
+      return super json
 
 
     ###
-    Get model observables as JSON
+    Get the attributes on the Model. This is a safe way to work with Model
+    attributes.
 
-    @method toJSON
+    @method getAttributes
     @return {Object}
     ###
-    toJSON: ->
-      ko.mapping.toJS @, @mapping
+    getAttributes: -> _.clone(@attributes)
 
 
     ###
-    Stringify model from JSON
-    Used in the majority of all ajax post, put, get, and delete requests
+    Add errors to the model and any relations.
 
-    @method asString
-    @return {String}
+    @method addErrors
+    @param errors {Object}
     ###
-    asString: ->
-      JSON.stringify(@toJSON())
-
-
-    ###
-    ----------------------------------------------------------------------------
-    UNDERSCORE JS
-    ----------------------------------------------------------------------------
-    ###
-
-    ###
-    UnderscoreJS inheritance.
-
-    Supports the following UnderscoreJS methods;
-    each, map, find, filter, reject, every, some, sortBy, groupBy, countBy.
-
-    Technically, if you pass the UnderscoreJS method you want to use as the
-    first argument and the arguments you want UnderscoreJS to execute as an
-    array for the second argument, you should be able to use any UnderscoreJS
-    method on the Model.
-
-    @method _
-    @return {Mixed}
-    ###
-    _: ->
-      args = _.toArray arguments[1]
-      args.unshift _.pick(@, _.keys(@toJSON()))
-      _[arguments[0]].apply @, args
+    addErrors: (errors) ->
+      @errors = {}
+      _.each errors, (message, error) =>
+        relation = @getRelation error
+        if relation?.collectionType?
+          _.each relation.related.models, (model, index) -> model.addErrors message[index]
+        else if relation?.model?
+          relation.related.addErrors message
+        else
+          @errors[error] = message
+          @trigger "error-#{error}"
 
     ###
-    @method each
+    Clear errors on the model and any relations.
+
+    @method clearErrors
     ###
-    each: -> @_('each', arguments)
+    clearErrors: ->
+      _.each @getAttributes(), (value, attr) =>
+        relation = @getRelation attr
+        if relation?.collectionType?
+          _.each relation.related.models, (model) -> model.clearErrors?()
+        else if relation?.model?
+          relation.related.clearErrors?()
+        else
+          @trigger "clear-error-#{attr}" if @errors?[attr]?
+
+
     ###
-    @method map
+    Get the errors on the Model. This is a safe way to work with Model errors.
+
+    @method getErrors
+    @return {Object}
     ###
-    map: -> @_('map', arguments)
+    getErrors: -> _.clone(@errors)
+
+
     ###
-    @method find
+    Get the provided error.
+
+    @method getError
+    @param error {String}
     ###
-    find: -> @_('find', arguments)
+    getError: (error) -> @errors[error] if @errors[error]
+
     ###
-    @method filter
+    Set the XHR method for setting the csrf token
+
+    @method getTokenXHR
+    @param options {Object}
+    @return {Object}
     ###
-    filter: -> @_('filter', arguments)
+    setTokenXHR: (options = {}) -> _.extend options,
+      beforeSend: (xhr) -> xhr.setRequestHeader 'X-CSRF-Token', Helpers.Form.getToken().csrfToken
+
     ###
-    @method reject
+    Override Backbone.Model save and set token xhr header
+
+    @method save
+    @param key {String/Object}
+    @param val {String/Object}
+    @param options {Object}
+    @return {Object}
     ###
-    reject: -> @_('reject', arguments)
+    save: (key, val, options) ->
+      if not key? or typeof key is "object"
+        attrs = key
+        options = val
+      else
+        (attrs = {})[key] = val
+
+      super(attrs, @setTokenXHR(options)).fail (xhr) =>
+        if xhr.status = 400 and xhr.responseJSON?.errors?
+          @addErrors xhr.responseJSON.errors
+          Helpers.HTML.modal 'common.error', ['common.missing_fields'], 'common.continue'
+        else
+          Helpers.HTML.xhrError xhr
+
     ###
-    @method every
+    Override Backbone.Model destroy and set token xhr header
+
+    @method destroy
+    @param options {Object}
+    @return {Object}
     ###
-    every: -> @_('every', arguments)
-    ###
-    @method some
-    ###
-    some: -> @_('some', arguments)
-    ###
-    @method sortBy
-    ###
-    sortBy: -> @_('sortBy', arguments)
-    ###
-    @method groupBy
-    ###
-    groupBy: -> @_('groupBy', arguments)
-    ###
-    @method countBy
-    ###
-    countBy: -> @_('countBy', arguments)
+    destroy: (options = {}) -> super(@setTokenXHR(options)).fail (xhr) -> Helpers.HTML.xhrError xhr
+
+
+  # Initialize the Model Relations
+  Phos.Model.setup()

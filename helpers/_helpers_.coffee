@@ -3,17 +3,13 @@
 define (require) ->
 
   ###
-  Namespace variable defining helper classes mainly used by the core classes in 'Fulcrum' namespace.
-
-  @type Script
-  @namespace Fulcrum.Helpers
-  @module FulcrumCoreClasses
-  @main FulcrumCoreClasses
+  Helper Modules
   ###
-  Localizer: require("./localizer")
-  Logger: require("./logger")
-  Mediator: require("./mediator")
-  Router: require("./router")
-  Settings: require("./settings")
-  Styler: require("./styler")
-  ViewHelper: require("./view-helper")
+  Mediator:   require './mediator'
+  Settings:   require './settings'
+  Router:     require './router'
+  HTML:       require './html'
+  RXHtml:     require './rxhtml'
+  Form:       require './form'
+  Translate:  require './translate'
+  Logger:     require './logger'

@@ -1,73 +1,94 @@
 'use strict'
 
 define (require) ->
-  Fulcrum = Helpers: {}
-
-  pubsub = require('pubsub')
+  _         = require 'underscore'
+  Backbone  = require 'backbone'
+  Phos      = Helpers: {}
+  Logger    = require './logger'
 
   ###
-  Mediator is used for handling the messaging inside the framework
+  An application level event system to mediate between Modules
+
+  A proper and organized event system should adhere to a concise naming system
+  to prevent confusion or unexpected behavior.
+
+  Examples:
+  - Module:View:Action
+  - Module:Component:Action
+  - Module:SubModule:View:Action
+  - Module:SubModule:Component:Action
+  - Module:Route:Action
+  - etc...
   ###
-  class Fulcrum.Helpers.Mediator
+  class Phos.Helpers.Mediator
 
     ###
-    PubSub JS
+    Console logging
 
+    @private
+    @property {Phos.Helpers.Logger}
+    ###
+    logger = new Logger()
+
+
+    ###
+    The Marionette application instance provided by the application context
+
+    @private
     @property {Object}
     ###
-    pubsub: null
+    app = null
+
+
+    ###
+    The Marionette application instance request handler
+
+    @private
+    @property {Object}
+    ###
+    mediator = null
 
 
     ###
     Constructor
+
+    @param options {Object}
+    @option options {Object} app The application instance
     ###
-    constructor: ->
-      @pubsub = pubsub
+    constructor: (options) ->
+      mediator = Backbone
 
 
     ###
-    Notify others on an occurrence of an event by setting up a publish point with a string
-    
+    Publish an event
+
     @method publish
-    
-    @param event {String} Event to publish
-    @param params {Object/Function}
+    @param event
+    @param *args
     ###
-    publish: (event, params) ->
-      @pubsub.publish event, params
-
-
-    ###
-    Notify others on an occurrence of an event by setting up a publish point with a string
-    This method run all events synchronously and should only be needed in testing.
-
-    @method publishSync
-
-    @param event {String} Event to publish
-    @param params {Object/Function}
-    ###
-    publishSync: (event, params) ->
-      @pubsub.publishSync event, params
+    publish: ->
+      mediator.trigger.apply mediator, arguments
 
 
     ###
-    listen to the events published by others by registering a callback on a named event
-    
+    Subscribe to an event
+
     @method subscribe
-    
-    @param event {String} Event to subscribe the callback function
-    @param fn {Function} Callback function
+    @param event
+    @param callback
+    @param context
     ###
-    subscribe: (event, fn) ->
-      @pubsub.subscribe event, fn
+    subscribe: ->
+      mediator.on.apply mediator, arguments
 
 
     ###
-    Unsubcribe a tokenized subscription
+    Unsubscribe from an event
 
     @method unsubscribe
-
-    @param token {Object} The token (saved) subscriber
+    @param event
+    @param callback
+    @param context
     ###
-    unsubscribe: (token) ->
-      @pubsub.unsubscribe token
+    unsubscribe: ->
+      mediator.off.apply mediator, arguments

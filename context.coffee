@@ -1,29 +1,39 @@
 'use strict'
 
 define (require) ->
-  _ = require('underscore')
-
-  Fulcrum = {}
-  Helpers = require("./helpers/_helpers_")
+  _                   = require 'underscore'
+  Backbone            = require 'backbone'
+  Backbone.Marionette = require 'backbone.marionette'
+  Phos                = {}
+  Helpers             = require "./helpers/_helpers_"
 
   ###
-  The Context class creates a context for the modules. A module may have private contexts and
-  contain its own settings outside of the global context.
+  The Context class creates a context for the modules. A module may have private
+  contexts and contain its own settings outside of the global context.
   ###
-  class Fulcrum.Context
+  class Phos.Context
+
+    ###
+    The core of the application instance
+
+    @private
+    @property {Object}
+    ###
+    app = null
+
 
     ###
     Optional inheritance of settings from a parent context
 
-    @property {Fulcrum.Context}
+    @property {Phos.Context}
     ###
     parentContext: null
 
 
     ###
-    Mediator helper
+    Application mediator
 
-    @property {Fulcrum.Helpers.Mediator}
+    @property {Object}
     ###
     mediator: null
 
@@ -31,7 +41,7 @@ define (require) ->
     ###
     Settings helper
 
-    @property {Fulcrum.Helpers.Settings}
+    @property {Phos.Helpers.Settings}
     ###
     settings: null
 
@@ -42,23 +52,72 @@ define (require) ->
     @param parentContext {Object} Optional inheritance of settings from a parent context
     ###
     constructor: (parentContext) ->
+      # Initialize the application. This will only happen the very first time
+      # new Context() is called
+      app = new Backbone.Marionette.Application()  unless app?
+
+      # Set the parent context
       @parentContext = parentContext
-      @mediator = if @parentContext then @parentContext.mediator else new Helpers.Mediator()
+
+      # Create the mediator for this context
+      @mediator = if @parentContext then @parentContext.getMediator() else new Helpers.Mediator(app: app)
+
+      # Create the settings for this context
       @settings = new Helpers.Settings(@parentContext.settings  if @parentContext)
+
+
+    ###
+    Access the application instance
+
+    @method getApp
+    @return {Object}
+    ###
+    getApp: -> app
+
+
+    ###
+    Start the application
+
+    @method startApp()
+    @return {Object}
+    ###
+    startApp: ->
+      setTimeout ->
+        app.start() unless app.isStarted
+      , 0
+
+
+    ###
+    If someone is interested in obtaining the parent context, this method could be used. But it is not a
+    good practice to work directly on contexts other than your immediate. Instead use events to communicate.
+
+    @method getParentContext
+    @return {Object} parentContext Parent context object
+    ###
+    getParentContext: -> @parentContext
+
+
+    ###
+    Get the active mediator
+
+    @method getMediator
+    @return {Object}
+    ###
+    getMediator: -> @mediator
 
 
     ###
     This is the method used to get settings from the context. This will return an object that has
     settings as object properties. Consumers can simply use the settings' property keys
-    to retrieve values. For example, context.getSettings().base-server-url will look for a
+    to retrieve values. For example, context.getSettings('base-server-url') will look for a
     setting object defined under the 'base-server-url' property.
 
     If context is a part of a context hierarchy, the settings object returned will contain
     settings of all parent contexts. Settings from child contexts will override settings from
     parent contexts, if same key exists.
 
-    To improve performance, it is a good practice to store the returned object and reduce the
-    number of calls to this method.
+    This method provides internal caching from the settings helper so any subsequent calls
+    to the same object property will return a cached result.
 
     @method getSettings
     @return {Object} settings
@@ -77,8 +136,7 @@ define (require) ->
     @alias
     @return {Object} settings
     ###
-    gs: ->
-      @getSettings.apply @, arguments
+    get: -> @getSettings.apply @, arguments
 
 
     ###
@@ -88,74 +146,35 @@ define (require) ->
     @method addSettings
     @param newSettings {Object} object containing settings as properties in it
     ###
-    addSettings: (newSettings) ->
+    set: (newSettings) ->
       @settings.load.apply @settings, arguments
 
 
     ###
-    This is the method to raise an event in the context. All subscribers in the same context hierarchy
-    will be notified. The first parameter is the event name as a string, and the next parameter is the
-    event data as an object or function.
+    Publish an event
 
     @method publish
-    @param event {String} Event name
-    @param params {Object/Function} Event data
+    @param params {Mixed}
     ###
-    publish: (event, params) ->
+    publish: ->
       @mediator.publish.apply @mediator, arguments
 
 
     ###
-    This is the method to raise an event in the context. All subscribers in the same context hierarchy
-    will be notified. The first parameter is the event name as a string, and the next parameter is the
-    event data as an object or function.
-
-    This method run all events synchronously and should only be needed in testing.
-
-    @method publishSync
-    @param event {String} Event name
-    @param params {Object/Function} Event data
-    ###
-    publishSync: (event, params) ->
-      @mediator.publishSync.apply @mediator, arguments
-
-
-    ###
-    The method for subscribing to receive events. first parameter is the name of the event you wish
-    to receive. Next, is the callback function to invoke when the event has occurred. The callback
-    function may have a parameter in case it is interesting to receive the event data as well.
+    Subscribe to an event
 
     @method subscribe
-    @param event {String} Event name
-    @param fn {Object} Callback function
+    @param params {Mixed}
     ###
-    subscribe: (event, fn) ->
+    subscribe: ->
       @mediator.subscribe.apply @mediator, arguments
 
 
     ###
-    The method for unsubscribing to events. The only parameter is the saved event subscriber.
+    Unsubscribe from an event
 
     @method unsubscribe
-    @param token {Object} The token (saved) subscriber
+    @param eventName {String} The event to unsubscribe from
     ###
-    unsubscribe: (token) ->
+    unsubscribe: (eventName) ->
       @mediator.unsubscribe.apply @mediator, arguments
-
-
-    ###
-    Helper method to allow the viewmodels and views to pubsub without passing in the entire context.
-
-    @method getMediator
-    ###
-    getMediator: -> @mediator
-
-
-    ###
-    If someone is interested in obtaining the parent context, this method could be used. But it is not a
-    good practice to work directly on contexts other than your immediate. Instead use events to communicate.
-
-    @method getParentContext
-    @return {Object} parentContext Parent context object
-    ###
-    getParentContext: -> @parentContext

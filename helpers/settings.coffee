@@ -1,25 +1,37 @@
 'use strict'
 
 define (require) ->
-  _ = require('underscore')
-
-  Fulcrum = Helpers: {}
+  _       = require 'underscore'
+  Phos    = Helpers: {}
+  Logger  = require './logger'
 
   ###
   Settings is used to propagate data through each context from the very point of
   application initialization to the context of each module and component.
   ###
-  class Fulcrum.Helpers.Settings
+  class Phos.Helpers.Settings
 
     ###
+    Console logging
+
     @private
-    @property {Boolean} 'isSettingsChained' State whether or not the settings has been chained
+    @property {Phos.Helpers.Logger}
+    ###
+    logger = new Logger()
+
+
+    ###
+    Settings chaining will enable or disable the ability for sub contexts to
+    access the settings / properties of any parent context.
+
+    @private
+    @property {Boolean} isSettingsChained Turn on or off settings chaining
     ###
     isSettingsChained = true
 
 
     ###
-    A small utility function to find a deep property and cache the result.
+    A small utility function to find a property and cache the result.
 
     @private
     @property {Function}
@@ -43,19 +55,10 @@ define (require) ->
 
 
       ###
-      @param items {Object} Items object
+      @param settings {Object} Settings class object
       ###
-      constructor: (items) ->
-        @items = items  if items
-
-
-      ###
-      Update the items
-
-      @method update
-      @param items {Object} Items object
-      ###
-      update: (items) -> @items = items
+      constructor: (settings) ->
+        @settings = settings
 
 
       ###
@@ -69,6 +72,23 @@ define (require) ->
 
 
       ###
+      Set a cache value
+
+      @method get
+      @param item {String} The key to set
+      @return {Mixed}
+      ###
+      set: (item) ->
+        unless @store[item]
+          obj = @settings.items()
+          keys = item.split('.')
+          (obj = obj[key]  if obj) for key in keys
+          @store[item] = obj
+
+        @store[item]
+
+
+      ###
       Get a property value
 
       @method get
@@ -76,13 +96,25 @@ define (require) ->
       @return {Mixed}
       ###
       get: (item) ->
-        unless @store[item]
-          obj = @items
-          keys = item.split('.')
-          (obj = obj[key]  if obj) for key in keys
-          @store[item] = obj
+        # Set the cache
+        @set item
 
-        @store[item]
+        # Fall back to the settings items if our data is lacking
+        # TODO Has to be a better way
+        ((stored) =>
+          # Check for object, the number check is for backbone collections
+          if stored and 'object' is typeof stored and ('number' is typeof stored.length or _.keys(stored).length > 0)
+            stored
+          # Check for string
+          else if stored and 'string' is typeof stored and stored.length isnt 0
+            stored
+          # Check for function
+          else if stored and 'function' is typeof stored
+            stored
+          # Non-cache hit
+          else
+            @store[item] = @settings.items()[item]
+        )(@store[item])
 
 
     ###
@@ -96,7 +128,7 @@ define (require) ->
     ###
     The parent settings
 
-    @property {Fulcrum.Helpers.Settings}
+    @property {Phos.Helpers.Settings}
     ###
     parentSettings: null
 
@@ -104,7 +136,7 @@ define (require) ->
     ###
     The settings of the current instance
 
-    @property {Fulcrum.Helpers.Settings}
+    @property {Phos.Helpers.Settings}
     ###
     localSettings: null
 
@@ -112,13 +144,12 @@ define (require) ->
     ###
     Constructor
 
-    @param parentSettings {Fulcrum.Helpers.Settings} Optional inheritance of settings from a parent context
+    @param parentSettings {Phos.Helpers.Settings} Optional inheritance of settings from a parent context
     ###
     constructor: (parentSettings) ->
       @parentSettings = parentSettings
       @localSettings = {}
-      @cache = new Cache() # Create a new cache to respect the context of each module
-      @cache.update @items() # Add the settings from the parent context (if they are set)
+      @cache = new Cache(@) # Create a new cache to respect the context of each module
 
 
     ###
@@ -129,7 +160,7 @@ define (require) ->
     ###
     load: (newSettings) ->
       _.extend @localSettings, newSettings
-      @cache.clear().update @items()
+      @cache.clear()
 
 
     ###
@@ -165,4 +196,4 @@ define (require) ->
     ###
     chainSettings: (isChained) ->
       isSettingsChained = isChained
-      @cache.clear().update @items()
+      @cache.clear()

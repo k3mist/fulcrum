@@ -1,182 +1,191 @@
 'use strict'
 
 define (require) ->
-  _ = require('underscore')
-  ko = require('knockout')
-
-  Fulcrum = {}
-  Helpers = require("./helpers/_helpers_")
+  _             = require 'underscore'
+  Phos          = {}
+  Phos.Context  = require './context'
+  Helpers       = require "./helpers/_helpers_"
 
   ###
-  The Module class provides a simple interface to store and initialize modules
-  and components. Each module and component within creates their own context and
-  inherits the context of the parent module.
-
-  TODO: Add global routing for Module
+  Abstraction of the Marionette Module with module event helpers
   ###
-  class Fulcrum.Module
+  class Phos.Module
 
     ###
-    Context
+    Console logging
 
-    @property {Fulcrum.Context}
+    @private
+    @property {Phos.Helpers.Logger}
     ###
-    context: null
-
-
-    ###
-    Modules
-
-    @property {Function<Fulcrum.Module>}
-    ###
-    modules: ko.observableArray()
+    logger = new Helpers.Logger()
 
 
     ###
-    Components
+    The Marionette application instance provided by the application context
 
-    @property {Function<Fulcrum.Component>}
+    @private
+    @property {Object}
     ###
-    components: ko.observableArray()
-
-
-    ###
-    Logger
-
-    @property {Fulcrum.Helpers.Logger}
-    ###
-    logger: new Helpers.Logger()
+    app = null
 
 
     ###
-    Pre instantiated Modules and Components for reactivation
+    The name of the Module used by the application instance
 
-    @property {Object<Array>}
+    @property {String}
     ###
-    __pre__: modules: [], components: []
+    moduleName: null
 
 
     ###
-    Initialize the Module
+    Enable or disable the auto start of the Module. Defaults to true.
+
+    @property {Boolean}
+    ###
+    startWithParent: true
+
+
+    ###
+    The global context of the application
+
+    @property {Phos.Context}
+    ###
+    appContext: null
+
+
+    ###
+    The context of the module
+
+    @property {Phos.Context}
+    ###
+    modContext: null
+
+
+    ###
+    Module Dock items. Each module defines its own "dock item(s)" aka navigation
+    items for the module.
+
+    Any type of property structure may be used for the dock item. The property
+    structure should remain consistent and a Collection with a Model should be
+    used to store the items and define the default properties of the dock item.
+    eg. [
+      {
+        label: 'Module Name'
+        priority: 1000
+        color: 'blue'
+        href: '/route'
+      }
+    ]
+
+    @property {Array}
+    ###
+    moduleDock: null
+
+
+    ###
+    Sub Modules of this Module
+
+    @property {Array<Phos.Module>}
+    ###
+    modules: null
+
+
+    ###
+    The Controller functioning on this Module
+
+    @property {Object}
+    ###
+    Controller: null
+
+
+    ###
+    Constructor
 
     @param options {Object}
-    @option options {Fulcrum.Context} context Context for the modules and components
-    @option options {Array<Fulcrum.Component>} components Array of components
-    @option options {Array<Fulcrum.Module>} modules Array of modules
+    @option options {Phos.Context} context The context of the module
+    @option options {Boolean} autoStart Enable or disable auto starting the Module
     ###
     constructor: (options) ->
-      @context = options.context
+      if not options.appContext?
+        return logger.error @constructor.name, 'Please provide the application context.'
+      else
+        @appContext = options.appContext
+        @modContext = new Phos.Context(options.modContext  if options.modContext?)
+        app = @appContext.getApp()  unless app?
 
-      # Create the observable arrays for the modules and components
-      for property in ['modules', 'components']
-        @[property] = ko.observableArray()
+      # Set the Module Name
+      unless @moduleName?
+        return logger.error @constructor.name, 'Please provide a Module Name.'
 
-      # Create the object for the pre instantiated modules and components.
-      @__pre__ = modules: [], components: []
-
-      # Add the sub modules to the Module.
-      @addModules options.modules  if options.modules?
-
-      # Add the components to the Module.
-      @addComponents options.components  if options.components?
-
-
-    ###
-    Activate the components and modules
-
-    @method activate
-    ###
-    activate: ->
-      @activateComponents()
-      @activateModules()
-      @
+      # Create the Module
+      self = @
+      app.module(@moduleName, -> _.extend(@, self))
 
 
     ###
-    Deactivate the module. This will deactivate any sub modules and components.
-    Technically this does not change the Module and the Module can be reactivated
-    by simply calling activate()
+    The before start method is an event that is triggered right before the Module
+    is started. Initialize the Module Controller here
 
-    Components will run their deactivation procedure removing the view model
-    bindings, jquery bindings, and the view template from the document.
+    In addition you can add initializers through the Module addInitializer
+    method.
 
-    TODO: Remove component routes and add reactivation procedure
-
-    @method deactivate
+    @method onBeforeStart
     ###
-    deactivate: ->
-      # Deactivate the Components
-      for index, Component of @components()
-        unless typeof Component is 'function'
-          Component.controller.removeRoute(Component.route)  if Component.route?
-          Component.deactivate()
-
-      # Deactivate the Modules
-      for index, Module of @modules()
-        unless typeof Module is 'function'
-          Module.deactivate()
-
-      # Remove the Sub Modules and Components from the Module
-      for property in ['modules', 'components']
-        @[property].removeAll()
-
-      # Add the pre-initialized sub Modules and Components back onto the Module
-      @addModules @__pre__.modules
-      @addComponents @__pre__.components
-      @
+    onBeforeStart: ->
+      if typeof @Controller is 'function'
+        @Controller = new @Controller(
+          appContext: @appContext
+          modContext: @modContext
+        )
+      else if @Controller? and @Controller.initialize?
+        @Controller.initialize()
 
 
     ###
-    Activate the modules
+    The on start method is an event that is triggered after the Module has
+    started. We start sub modules here so we are sure the parent module has
+    initialized and setup any views or data that may be required by a sub
+    module.
 
-    @method activateModules
-    @return {Array} All modules currently loaded
+    @method onStart
     ###
-    activateModules: ->
-      for index, Module of @modules()
-        if typeof Module is 'function'
-          @modules()[index] = new Module context: @context
-        else
-          Module.activate @context
+    onStart: ->
+      # Create the sub modules
+      _.each @modules, (Module, i) =>
+        new Module(
+          appContext: @appContext
+          modContext: @modContext
+        )  if typeof Module is 'function'
 
-      @modules()
-
-
-    ###
-    Activate the components
-
-    @method activateModules
-    @return {Array} All components currently loaded
-    ###
-    activateComponents: ->
-      for index, Component of @components()
-        if typeof Component is 'function'
-          @components()[index] = new Component context: @context
-        else
-          Component.activate  if Component.constructor? then Component.parent else @context
-
-      @components()
+      # Send out an event to add the Dock items for the Module
+      @appContext.publish('Core:Module:Dock:Add', @moduleDock)  if @moduleDock?
 
 
     ###
-    Add modules
+    The before stop method is an event that is triggered right before the Module
+    is stopped. Peform any pre-teardown functionality here that is not already
+    handled by Marionette. For example, a confirmation dialog if the user really
+    wants to close the module.
 
-    @method addModules
-    @param modules {Array<Fulcrum.Module>}
+    @placeholder
+    @method onBeforeStop
     ###
-    addModules: (modules) ->
-      for module in modules
-        @modules.push module
-        @__pre__.modules.push module
+    onBeforeStop: ->
 
 
     ###
-    Add components
+    The after stop method is an event that is triggered after the Module is
+    stopped. Peform any additional teardown functionality that needs to take place
+    here.
 
-    @method addComponents
-    @param modules {Array<Fulcrum.Component>}
+    In addition you can add finalizers through the Module addFinalizer
+    method.
+
+    @placeholder
+    @method onAfterStop
     ###
-    addComponents: (components) ->
-      for component in components
-        @components.push component
-        @__pre__.components.push component
+    onStop: ->
+      # Send out an event to remove the Dock items for the Module
+      @appContext.publish('Core:Module:Dock:Remove', @moduleDock)  if @moduleDock?
+      # Close the controller
+      @Controller.close?()

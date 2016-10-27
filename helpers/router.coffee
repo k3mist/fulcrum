@@ -1,103 +1,86 @@
 'use strict'
 
 define (require) ->
-  _ = require('underscore')
-  signals = require('signals')
-  crossroads = require('crossroads')
-  hasher = require('hasher')
-
-  Fulcrum = Helpers: {}
-  Fulcrum.Helpers.Logger = require('./logger')
+  _         = require 'underscore'
+  Backbone  = require 'backbone'
+  Phos      = Helpers: {}
 
   ###
-  Router is used to handle url navigation by setting up routes and hash codes
+  Abstraction of the Marionette/Backbone Router
   ###
-  class Fulcrum.Helpers.Router
+  class Phos.Helpers.Router
+
 
     ###
-    Crossroads Router
+    Restful methods
 
+    @private
     @property {Object}
     ###
-    router: null
+    _restful =
+      index: ''
+      create: '/new'
+      show: '/:id'
+      edit: '/:id/edit'
 
 
     ###
-    Logger
+    Constructor
 
-    @property {Fulcrum.Helpers.Logger}
+    @param options {Object}
     ###
-    logger: new Fulcrum.Helpers.Logger()
+    constructor: (options) ->
+      # Check for restful on the route methods
+      (=>
+        for route, method of options.routes
+          (=>
+            for restMethod, restRoute of _restful
+              options.routes["#{route}#{restRoute}"] = restMethod
+            return
+          )() if method is 'restful'
+        return
+      )() if options.routes?
+
+      _.extend(@, new Backbone.Marionette.AppRouter(
+        controller: options.controller
+        appRoutes: options.routes
+      ))
 
 
     ###
-    Construtor
+    Add routes to an already running Router
 
-    @property {Object} 'router' Holds an instance of crossroads router
+    @method addRoutes
+    @param routes {Object}
     ###
-    constructor: ->
-      @router = crossroads.create()
-      @router.normalizeFn = crossroads.NORM_AS_OBJECT
-      return @
+    addRoutes: (routes) ->
+      _.each routes, (method, route) =>
+        @appRoute route, method
+
 
     ###
-    Creates a new route pattern and add it to crossroads routes collection
+    Add a single route to an already running Router
 
     @method addRoute
-    @param pattern {String} String pattern that should be used to match against requests
-    @param handler {Function} Function that should be executed when a request matches the route pattern
+    @param route {Object}
     ###
-    addRoute: (pattern, handler, log) ->
-      @router.addRoute pattern, handler
-      @router.routed.add @logger.info, @logger  if log?
-      @router
+    addRoute: (route, method) ->
+      @appRoute route, method
 
 
     ###
-    Remove a route.
+    Navigate to path
 
-    @method removeRoute
-    @param route {String}
+    @method navigateTo
+    @param path {String}
     ###
-    removeRoute: (route) ->
-      routeObject = _.find @router._routes, (e) -> route.match(e._matchRegexp)
-      @router.removeRoute(routeObject)  if routeObject?
+    navigateTo: (path) -> @navigate path, trigger: true
 
 
     ###
-    Initializes the router by parsing initial hash, parsing hash changes and initializing the hasher
-    @method init
-    ###
-    init: ->
-      parseHash = (newHash, oldHash) =>
-        @router.parse newHash
-      hasher.initialized.add parseHash # parse initial hash
-      hasher.changed.add parseHash # parse hash changes
-      hasher.init()  unless hasher.isActive() # start listening for history change
+    Redirect to path
 
-
+    @method redirect
+    @param path {String}
     ###
-    Set the hash code to the url
-    @method routeTo
-    @param path {String} Hash code to update the url
-    ###
-    @.routeTo = (path) ->
-      hasher.setHash path
-      hasher
-
-
-    ###
-    Set the hash code to the url without saving history
-    @method redirectTo
-    @param path {String} Hash code to update the url
-    ###
-    @.redirectTo = (path) ->
-      hasher.replaceHash path
-      hasher
-
-    ###
-    Get the current route
-    @method getRoute
-    ###
-    @.getRoute = ->
-      hasher.getHash()
+    redirect: (path) -> window.location.href = path

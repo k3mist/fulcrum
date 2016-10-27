@@ -1,12 +1,12 @@
 'use strict'
 
 define (require) ->
-  Fulcrum = Helpers: {}
+  Phos = Helpers: {}
 
   ###
-  Logger is used when we want to log something (some information or error) on the server side as it can be referred later
+  A simple logging mechanism
   ###
-  class Fulcrum.Helpers.Logger
+  class Phos.Helpers.Logger
 
     ###
     Logger initialized
@@ -24,23 +24,31 @@ define (require) ->
 
 
     ###
-    Print the input string message on the console as a log
+    Print a message to the console
 
     @method info
-    @param {String} msg
+    @param {String} message
     ###
-    info: (msg) ->
-      console.log msg  if console? and @initialized
+    info: (message) ->
+      console.log.apply console, arguments  if console? and @initialized
 
 
     ###
-    Print the input string message on the console log as an error
+    Print a message to the console as an error
 
     @method error
-    @param {String} msg
+    @param {String} message
     @param {String} error
     ###
-    error: (msg, error) ->
-      if console? and @initialized
-        console.log "ERROR : " + msg
-        console.error error
+    error: (message, error) ->
+      console.error.apply console, arguments  if console? and @initialized
+
+
+    ###
+    Print a message to the console as a warning
+
+    @method warn
+    @param {String} message
+    ###
+    warn: (message) ->
+      console.warn.apply console, arguments  if console? and @initialized
